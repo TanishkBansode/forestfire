@@ -20,7 +20,7 @@
             grid-template-areas:
                 "header header"
                 "controls controls"
-                "sim plot1";
+                "sim sim";
             gap: 1.5em;
 
             /* Ensure it takes up space but doesn't force full viewport height if embedded */
@@ -164,7 +164,7 @@
         @media (max-width: 1000px) {
             #sim-wrapper {
                 grid-template-columns: 1fr;
-                grid-template-areas: "header" "controls" "sim" "plot1";
+                grid-template-areas: "header" "controls" "sim";
             }
 
             #sim-wrapper .sim-container { min-height: 0; padding: 0.5em; }
@@ -223,7 +223,6 @@
     <script>
         // --- SECTION 1: GLOBAL VARIABLES & CONSTANTS ---
         const GRID_SIZE = 256;
-        const TOTAL_SITES = GRID_SIZE * GRID_SIZE;
         const STATES = { VACANT: 0, TREE: 1, BURNING: 2 };
         const FIRE_ANIMATION_SPEED = 1;
         const RECENTLY_BURNED_STATE = -1;
@@ -231,13 +230,11 @@
 
         let grid; let isSimulating = false; let isFireActive = false;
         let probabilityP, f_s, stepsPerFrame, seed, animateFires;
-        let N_s = 0; let treeCount = 0;
-        let fireQueue = []; let nextFireQueue = []; let currentFireSize = 0;
-        let fireStats = new Map(); let totalFires = 0;
+        let fireQueue = []; let nextFireQueue = [];
+
 
         const canvas = document.getElementById('forestCanvas');
         const ctx = canvas.getContext('2d');
-        let logLogChart;
 
         const pSlider = document.getElementById('pSlider');
         const pValue = document.getElementById('pValue'); const fSlider = document.getElementById('fSlider');
@@ -245,9 +242,6 @@
         const speedValue = document.getElementById('speedValue'); const startButton = document.getElementById('startButton');
         const resetButton = document.getElementById('resetButton'); const seedBox = document.getElementById('seedBox');
         const animateToggle = document.getElementById('animateToggle');
-
-        const timestepsReadout = document.getElementById('timesteps'); const treeCountReadout = document.getElementById('treeCount');
-        const treeDensityReadout = document.getElementById('treeDensity'); const totalFiresReadout = document.getElementById('totalFires');
 
         let rng; // PRNG
         function seedableRNG(seedStr) {
@@ -302,8 +296,8 @@
 
             rng = seedableRNG(seed); grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(STATES.VACANT));
 
-            N_s = 0; treeCount = 0; totalFires = 0; isFireActive = false;
-            fireQueue = []; nextFireQueue = []; currentFireSize = 0; fireStats.clear();
+            isFireActive = false;
+            fireQueue = []; nextFireQueue = [];
 
             drawGrid();
         }
@@ -311,10 +305,10 @@
         // --- SECTION 4: CORE SIMULATION LOGIC ---
 
         function runSimulationSteps() {
-             for (let i = 0; i < stepsPerFrame; i++) { const x_g = getRandomInt(GRID_SIZE); const y_g = getRandomInt(GRID_SIZE); if (grid[y_g][x_g] === STATES.VACANT && rng() < probabilityP) { grid[y_g][x_g] = STATES.TREE; treeCount++; } const x_f = getRandomInt(GRID_SIZE); const y_f = getRandomInt(GRID_SIZE); if (grid[y_f][x_f] === STATES.TREE && rng() < f_s) { startFire(x_f, y_f); return; } N_s++; }
+             for (let i = 0; i < stepsPerFrame; i++) { const x_g = getRandomInt(GRID_SIZE); const y_g = getRandomInt(GRID_SIZE); if (grid[y_g][x_g] === STATES.VACANT && rng() < probabilityP) { grid[y_g][x_g] = STATES.TREE; } const x_f = getRandomInt(GRID_SIZE); const y_f = getRandomInt(GRID_SIZE); if (grid[y_f][x_f] === STATES.TREE && rng() < f_s) { startFire(x_f, y_f); return; } }
         }
         function startFire(x, y) {
-             isFireActive = true; grid[y][x] = STATES.BURNING; treeCount--; currentFireSize = 1; fireQueue.push({x: x, y: y});
+             isFireActive = true; grid[y][x] = STATES.BURNING; fireQueue.push({x: x, y: y});
         }
 
         function runFireStepAnimated() {
@@ -326,7 +320,7 @@
                             if (dx === 0 && dy === 0) continue;
                             const nx = cell.x + dx; const ny = cell.y + dy;
                             if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && grid[ny][nx] === STATES.TREE) {
-                                grid[ny][nx] = STATES.BURNING; treeCount--; currentFireSize++;
+                                grid[ny][nx] = STATES.BURNING;
                                 nextFireQueue.push({x: nx, y: ny});
                             }
                         }
@@ -347,7 +341,7 @@
                             if (dx === 0 && dy === 0) continue;
                             const nx = cell.x + dx; const ny = cell.y + dy;
                             if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && grid[ny][nx] === STATES.TREE) {
-                                 grid[ny][nx] = STATES.BURNING; treeCount--; currentFireSize++;
+                                 grid[ny][nx] = STATES.BURNING;
                                  nextFireQueue.push({x: nx, y: ny});
                              }
                         }
@@ -362,75 +356,8 @@
         /** Cleans up after a fire is finished. */
         function endFire() {
             isFireActive = false;
-            recordFireStatistics();
-            currentFireSize = 0;
+
         }
-
-        // --- SECTION 5: STATISTICS & PLOTTING ---
-        function recordFireStatistics() {
-             if (currentFireSize === 0) return; const currentCount = fireStats.get(currentFireSize) || 0; fireStats.set(currentFireSize, currentCount + 1); totalFires++;
-        }
-        function updateStatsReadouts() {
-             timestepsReadout.textContent = N_s.toLocaleString(); treeCountReadout.textContent = treeCount.toLocaleString(); totalFiresReadout.textContent = totalFires.toLocaleString(); const density = (treeCount / TOTAL_SITES) * 100; treeDensityReadout.textContent = `${density.toFixed(2)}%`;
-        }
-
-        /**
-         * (Function unchanged)
-         */
-        function performLogBinning(fireStats, binBase = 1.5) {
-            if (fireStats.size === 0) return [];
-
-            const sortedSizes = Array.from(fireStats.keys()).sort((a, b) => a - b);
-            if (sortedSizes.length === 0) return [];
-
-            const maxFire = sortedSizes[sortedSizes.length - 1];
-
-            let binEdges = [1];
-            let currentEdge = 1;
-            while (currentEdge <= maxFire) {
-                currentEdge *= binBase;
-                binEdges.push(Math.round(currentEdge));
-            }
-            binEdges.push(Math.round(currentEdge * binBase));
-
-            const binnedData = [];
-            let dataIndex = 0;
-
-            for (let i = 0; i < binEdges.length - 1; i++) {
-                const binMin = binEdges[i];
-                const binMax = binEdges[i+1];
-
-                if (binMin >= binMax) continue;
-
-                const binWidth = binMax - binMin;
-
-                let totalCount = 0;
-                let weightedSizeSum = 0;
-
-                while (dataIndex < sortedSizes.length && sortedSizes[dataIndex] < binMin) {
-                    dataIndex++;
-                }
-
-                let k = dataIndex;
-                while (k < sortedSizes.length && sortedSizes[k] < binMax) {
-                    const size = sortedSizes[k];
-                    const count = fireStats.get(size);
-                    totalCount += count;
-                    weightedSizeSum += size * count;
-                    k++;
-                }
-
-                if (totalCount > 0) {
-                    binnedData.push({
-                        x: weightedSizeSum / totalCount, // Average size in bin
-                        y: totalCount / binWidth         // Normalized count (probability density P(s))
-                    });
-                }
-            }
-            return binnedData;
-        }
-
-
 
         // --- SECTION 6: RENDERING & MAIN LOOP ---
         const COLORS = {
@@ -485,7 +412,7 @@
        }
 
         /** The main animation loop. */
-        function mainLoop(timestamp) {
+        function mainLoop() {
             if (!isSimulating) return;
             decayRecentlyBurned();
             if (isFireActive) {
@@ -494,7 +421,6 @@
                 runSimulationSteps();
             }
             drawGrid();
-            updateStatsReadouts();
             requestAnimationFrame(mainLoop);
         }
 
