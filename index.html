@@ -16,8 +16,8 @@
 
         #forestCanvas {
             image-rendering: pixelated;
-            width: min(90vw, 90vh);
-            height: min(90vw, 90vh);
+            width: 100vw ;
+            height: 100vh;
         }
     </style>
 </head>
@@ -26,12 +26,17 @@
 
     <script>
         // --- TUNABLE PARAMETERS ---
-        const GRID_SIZE        = 256;
+        const GRID_BASE        = 256;
         const PROBABILITY_P    = 0.01;     // Tree growth probability per step
         const PROBABILITY_F    = 0.00001;  // Lightning strike probability per step
         const STEPS_PER_FRAME  = 1000;     // Growth steps per animation frame
         const ANIMATE_FIRES    = true;     // false = fires resolve instantly each frame
         const SEED             = "42";     // RNG seed (any string)
+
+        const RATIO = screen.width / screen.height;
+        const GRID_W = Math.round(GRID_BASE * Math.sqrt(RATIO));
+        const GRID_H = Math.round(GRID_BASE / Math.sqrt(RATIO));
+
 
         // --- CONSTANTS ---
         const STATES = { VACANT: 0, TREE: 1, BURNING: 2 };
@@ -69,10 +74,10 @@
 
         // --- INIT ---
         function init() {
-            canvas.width  = GRID_SIZE;
-            canvas.height = GRID_SIZE;
+            canvas.width  = GRID_W;
+            canvas.height = GRID_H;
             rng = seedableRNG(SEED);
-            grid = Array.from({length: GRID_SIZE}, () => new Int16Array(GRID_SIZE));
+            grid = Array.from({length: GRID_H}, () => new Int16Array(GRID_W));
             isFireActive = false;
             fireQueue = [];
             nextFireQueue = [];
@@ -81,11 +86,11 @@
         // --- SIMULATION ---
         function runGrowthSteps() {
             for (let i = 0; i < STEPS_PER_FRAME; i++) {
-                const xg = randInt(GRID_SIZE), yg = randInt(GRID_SIZE);
+                const xg = randInt(GRID_W), yg = randInt(GRID_H);
                 if (grid[yg][xg] === STATES.VACANT && rng() < PROBABILITY_P)
                     grid[yg][xg] = STATES.TREE;
 
-                const xf = randInt(GRID_SIZE), yf = randInt(GRID_SIZE);
+                const xf = randInt(GRID_W), yf = randInt(GRID_H);
                 if (grid[yf][xf] === STATES.TREE && rng() < PROBABILITY_F) {
                     isFireActive = true;
                     grid[yf][xf] = STATES.BURNING;
@@ -102,7 +107,7 @@
                     for (let dx = -1; dx <= 1; dx++) {
                         if (dx === 0 && dy === 0) continue;
                         const nx = cell.x + dx, ny = cell.y + dy;
-                        if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE
+                        if (nx >= 0 && nx < GRID_W && ny >= 0 && ny < GRID_H
                             && grid[ny][nx] === STATES.TREE) {
                             grid[ny][nx] = STATES.BURNING;
                             nextFireQueue.push({x: nx, y: ny});
@@ -121,8 +126,8 @@
 
         // --- DECAY ---
         function decayBurned() {
-            for (let y = 0; y < GRID_SIZE; y++)
-                for (let x = 0; x < GRID_SIZE; x++)
+            for (let y = 0; y < GRID_H; y++)
+                for (let x = 0; x < GRID_W; x++)
                     if (grid[y][x] <= RECENTLY_BURNED_STATE) {
                         grid[y][x]++;
                         if (grid[y][x] > RECENTLY_BURNED_STATE)
@@ -138,11 +143,11 @@
         };
 
         function draw() {
-            const img = ctx.createImageData(GRID_SIZE, GRID_SIZE);
+            const img = ctx.createImageData(GRID_W, GRID_H );
             const d = img.data;
             let i = 0;
-            for (let y = 0; y < GRID_SIZE; y++) {
-                for (let x = 0; x < GRID_SIZE; x++) {
+            for (let y = 0; y < GRID_H; y++) {
+                for (let x = 0; x < GRID_W; x++) {
                     const s = grid[y][x];
                     let r, g, b;
                     if (s === STATES.BURNING) {
